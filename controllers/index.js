@@ -19,7 +19,6 @@ class Controller {
       const containerClient = await blobServiceClient.getContainerClient(
         container
       );
-      // const blobName = fileName;
       const blockBlobClient = containerClient.getBlockBlobClient(fileName);
       const uploadBlobResponse = await blockBlobClient.uploadStream(data);
       res.status(200).json(uploadBlobResponse);
