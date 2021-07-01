@@ -56,7 +56,7 @@ class Controller {
 }
 
 // // =================================================
-// // uncomment this section to doing concurent test
+// // uncomment this section to doing concurrent test
 // // =================================================
 
 // const doTest = async (idx) => {
