@@ -2,44 +2,8 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const axios = require("axios");
 const got = require("got");
 const Queue = require("node-persistent-queue");
-const q = new Queue(__dirname + "/db.sqlite", 20);
+const q = new Queue("./db/db.sqlite", 20);
 
-// // =================== QUEUE USING 'KUE REDIS' ==================
-// const kue = require("kue");
-// const queue = kue.createQueue({
-//   // redis: {
-//   //   host: "redis",
-//   //   port: 6379,
-//   // },
-// });
-// // // donwload and upload file running on queue
-// queue.process("saveFile", (job, done) => {
-//   try {
-//     const { fileName, idx } = job.data.items;
-//     const connectionString = process.env.CONNECTION_STRING;
-//     const container = process.env.CONTAINER_NAME;
-//     const secret = process.env.SECRET;
-//     const data = got.stream(
-//       `https://portal.hoiio.net/_o/v1/callRecordings/${fileName}?secret=${secret}`
-//     );
-//     // console.log(data);
-
-//     const blobServiceClient =
-//       BlobServiceClient.fromConnectionString(connectionString);
-
-//     const blobName = `${idx}-${fileName}`;
-//     const containerClient = blobServiceClient.getContainerClient(container);
-//     const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-//     const uploadBlobResponse = blockBlobClient.uploadStream(data);
-//     console.log(uploadBlobResponse, new Date());
-//     done(null, "finish");
-//   } catch (error) {
-//     console.log(error);
-//     done(error);
-//   }
-// });
-
-// // ================== QUEUE USING 'PRESISTEN QUEUE' ===================
 q.on("next", (task) => {
   console.log("Queue contains " + q.getLength() + " job/s");
   console.log("Process task: ");
@@ -63,8 +27,9 @@ q.on("next", (task) => {
     console.log("success", new Date());
     q.done();
   } catch (error) {
+    // next will build alert system for error monitoring
     console.log(error);
-    q.done(error);
+    q.done();
   }
 });
 q.open().then(() => {
@@ -74,29 +39,6 @@ q.open().then(() => {
 class Controller {
   static async saveAudio(req, res) {
     try {
-      // // ============= queue using 'kue redis' ===============
-      // const fileName = req.body.filename;
-      // const idx = req.body.idx;
-      // const job = queue.create("saveFile", {
-      //   items: {
-      //     fileName,
-      //     idx,
-      //   },
-      // });
-      // job.on("failed", (err) => {
-      //   throw new Error(err);
-      // });
-      // job.on("complete", (result) => {
-      //   console.log("complete");
-      // });
-      // job.save();
-
-      // console.log("success", new Date());
-      // res.status(200).json({
-      //   message: "success add to queue",
-      // });
-
-      // // ===================== queue using 'node-persistent-queue' ===============
       const task = {
         fileName: req.body.filename,
         idx: req.body.idx,
