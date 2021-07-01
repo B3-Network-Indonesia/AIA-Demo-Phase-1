@@ -2,7 +2,7 @@ const { BlobServiceClient } = require("@azure/storage-blob");
 const axios = require("axios");
 const got = require("got");
 const Queue = require("node-persistent-queue");
-const q = new Queue("./db/db.sqlite", 20);
+const q = new Queue("./db/db.sqlite", 1);
 
 q.on("next", (task) => {
   console.log("Queue contains " + q.getLength() + " job/s");
