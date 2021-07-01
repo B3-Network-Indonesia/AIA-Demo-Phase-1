@@ -4,11 +4,21 @@ services:
   redis:
     image: "redis:alpine3.13"
     ports:
-      - "6379:6379"
+      - "6378:6379"
     command: "redis-server"
+  sqlite3:
+    container_name: sqlite3_container
+    image: nouchka/sqlite3:latest
+    stdin_open: true
+    tty: true
+    # volumes:
+    #   - path-to/your/databases/sqlite3:/root/db/
+    ports:
+      - "9000:9000"
+    restart: unless-stopped
   aia:
     depends_on:
-      - redis
+      - sqlite3
     build: ./
     ports:
       - "5000:5000"
