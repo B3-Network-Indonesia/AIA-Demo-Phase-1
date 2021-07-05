@@ -13,7 +13,7 @@ queue.on("empty", () => {
 queue.on("next", (task) => {
   console.log("Queue contains " + queue.getLength() + " job/s");
   console.log("Process task: ");
-  const { fileKey, idx } = task.job;
+  const { fileKey } = task.job;
   const connectionString = process.env.CONNECTION_STRING;
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
@@ -21,6 +21,7 @@ queue.on("next", (task) => {
   const uploadFile = () => {
     const writeSource = new Stream.PassThrough();
     let digest;
+    // download audio file
     axios({
       method: "GET",
       url: `https://portal.spidergate.com.sg/_o/v2/files/${fileKey}?secret=${secret}`,
@@ -33,33 +34,26 @@ queue.on("next", (task) => {
         return fileHash(response.data);
       })
       .then((result) => {
-        // checksum
+        // integrity verification
         if (result === digest) {
+          // upload file to azure storage
           const blobServiceClient =
             BlobServiceClient.fromConnectionString(connectionString);
-          const blobName = `${idx}-${fileKey}`;
           const containerClient =
             blobServiceClient.getContainerClient(container);
-          const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-          blockBlobClient
-            .uploadStream(writeSource)
-            .then((response) => {
-              console.log(response, "<=== response azure");
-              queue.done();
-            })
-            .catch((error) => {
-              // send log error to open api
-              console.log(error, "<=== upload error");
-              queue.done();
-            });
+          const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
+          return blockBlobClient.uploadStream(writeSource);
         } else {
-          // repeat download
-          console.log("<=== repeat download");
+          // repeat download if verification not pass
           uploadFile();
         }
       })
+      .then((result) => {
+        console.log(result, "<=== response from azure");
+        queue.done();
+      })
       .catch((error) => {
-        // send log error to open api
+        // send log error to open api or create alert
         console.log(error, "<=== download error");
         queue.done();
       });
@@ -77,7 +71,6 @@ class Controller {
     try {
       const task = {
         fileKey: req.body.fileKey,
-        idx: req.body.idx,
       };
       queue.open().then(() => {
         queue.add(task);
@@ -105,7 +98,6 @@ class Controller {
 //       orgUuid: "ef1eb1d3-a884-474f-9f68-74bd6ea5a83e",
 //       txnUuid: "57deaee3-a774-4938-8875-3ad8f4c90dc7",
 //       webhookCode: "callRecordingV2",
-//       idx,
 //     },
 //   });
 //   console.log(`Transaction id #${idx}`, data);
