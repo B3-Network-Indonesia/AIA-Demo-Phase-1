@@ -18,47 +18,47 @@ queue.on("next", (task) => {
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
 
-  const uploadFile = () => {
-    const writeSource = new Stream.PassThrough();
-    let digest;
-    // download audio file
-    axios({
-      method: "GET",
-      url: `https://portal.spidergate.com.sg/_o/v2/files/${fileKey}?secret=${secret}`,
-      responseType: "stream",
+  const writeSource = new Stream.PassThrough();
+  let digest;
+  // download audio file
+  axios({
+    method: "GET",
+    url: `https://portal.spidergate.com.sg/_o/v2/files/${fileKey}?secret=${secret}`,
+    responseType: "stream",
+  })
+    .then((response) => {
+      digest = response.headers.digest;
+      response.data.pipe(writeSource);
+      // generate digest
+      return fileHash(response.data);
     })
-      .then((response) => {
-        digest = response.headers.digest;
-        response.data.pipe(writeSource);
-        // generate digest
-        return fileHash(response.data);
-      })
-      .then((result) => {
-        // integrity verification
-        if (result === digest) {
-          // upload file to azure storage
-          const blobServiceClient =
-            BlobServiceClient.fromConnectionString(connectionString);
-          const containerClient =
-            blobServiceClient.getContainerClient(container);
-          const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
-          return blockBlobClient.uploadStream(writeSource);
-        } else {
-          // repeat download if verification not pass
-          uploadFile();
-        }
-      })
-      .then((result) => {
-        console.log(result, "<=== response from azure");
+    .then((result) => {
+      // integrity verification
+      if (result === digest) {
+        // upload file to azure storage
+        const blobServiceClient =
+          BlobServiceClient.fromConnectionString(connectionString);
+        const containerClient = blobServiceClient.getContainerClient(container);
+        const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
+        return blockBlobClient.uploadStream(writeSource);
+      } else {
+        // add back to queue if verification not pass
+        queue.add({
+          fileKey,
+        });
         queue.done();
-      })
-      .catch((error) => {
-        // send log error to open api or create alert
-        console.log(error, "<=== download error");
-        queue.done();
+      }
+    })
+    .then(() => {
+      queue.done();
+    })
+    .catch((error) => {
+      console.log(error, "<=== download error");
+      queue.add({
+        fileKey,
       });
-  };
-  uploadFile();
+      queue.done();
+    });
 });
 
 // open connetion to queue and then start
@@ -69,11 +69,10 @@ queue.open().then(() => {
 class Controller {
   static async saveAudio(req, res) {
     try {
-      const task = {
-        fileKey: req.body.fileKey,
-      };
       queue.open().then(() => {
-        queue.add(task);
+        queue.add({
+          fileKey: req.body.fileKey,
+        });
       });
       console.log("response", new Date());
       res.send("success add queue");
