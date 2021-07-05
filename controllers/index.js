@@ -29,30 +29,29 @@ queue.on("next", (task) => {
       .then((response) => {
         digest = response.headers.digest;
         response.data.pipe(writeSource);
-
         // generate digest
         return fileHash(response.data);
       })
-      .then(async (result) => {
+      .then((result) => {
         // checksum
         if (result === digest) {
-          try {
-            const blobServiceClient =
-              await BlobServiceClient.fromConnectionString(connectionString);
-            const blobName = `${idx}-${fileKey}`;
-            const containerClient = await blobServiceClient.getContainerClient(
-              container
-            );
-            const blockBlobClient = await containerClient.getBlockBlobClient(
-              blobName
-            );
-            await blockBlobClient.uploadStream(writeSource);
-            queue.done();
-          } catch (error) {
-            // next send error to open api
-            console.log(error, "<=== upload error");
-            queue.done();
-          }
+          const blobServiceClient =
+            BlobServiceClient.fromConnectionString(connectionString);
+          const blobName = `${idx}-${fileKey}`;
+          const containerClient =
+            blobServiceClient.getContainerClient(container);
+          const blockBlobClient = containerClient.getBlockBlobClient(blobName);
+          blockBlobClient
+            .uploadStream(writeSource)
+            .then((response) => {
+              console.log(response, "<=== response azure");
+              queue.done();
+            })
+            .catch((error) => {
+              // send log error to open api
+              console.log(error, "<=== upload error");
+              queue.done();
+            });
         } else {
           // repeat download
           console.log("<=== repeat download");
