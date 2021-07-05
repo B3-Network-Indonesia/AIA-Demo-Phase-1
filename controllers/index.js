@@ -1,50 +1,87 @@
+const fileHash = require("../helpers");
 const { BlobServiceClient } = require("@azure/storage-blob");
-const axios = require("axios");
-const got = require("got");
+const Stream = require("stream");
 const Queue = require("node-persistent-queue");
-const q = new Queue("./db/db.sqlite", 1);
+const queue = new Queue("./db/db.sqlite", 1);
+const axios = require("axios");
 
-q.on("next", (task) => {
-  console.log("Queue contains " + q.getLength() + " job/s");
-  console.log("Process task: ");
-  console.log(task.job.fileName);
-  try {
-    const { fileName, idx } = task.job;
-    const connectionString = process.env.CONNECTION_STRING;
-    const container = process.env.CONTAINER_NAME;
-    const secret = process.env.SECRET;
-    const data = got.stream(
-      `https://portal.hoiio.net/_o/v1/callRecordings/${fileName}?secret=${secret}`
-    );
-
-    const blobServiceClient =
-      BlobServiceClient.fromConnectionString(connectionString);
-
-    const blobName = `${idx}-${fileName}`;
-    const containerClient = blobServiceClient.getContainerClient(container);
-    const blockBlobClient = containerClient.getBlockBlobClient(blobName);
-    const uploadBlobResponse = blockBlobClient.uploadStream(data);
-    console.log("success", new Date());
-    q.done();
-  } catch (error) {
-    // next will build alert system for error monitoring
-    console.log(error);
-    q.done();
-  }
+queue.on("empty", () => {
+  console.log("empty");
 });
-q.open().then(() => {
-  q.start();
+
+// run queue job
+queue.on("next", (task) => {
+  console.log("Queue contains " + queue.getLength() + " job/s");
+  console.log("Process task: ");
+  const { fileKey, idx } = task.job;
+  const connectionString = process.env.CONNECTION_STRING;
+  const container = process.env.CONTAINER_NAME;
+  const secret = process.env.SECRET;
+
+  const uploadFile = () => {
+    const writeSource = new Stream.PassThrough();
+    let digest;
+    axios({
+      method: "GET",
+      url: `https://portal.spidergate.com.sg/_o/v2/files/${fileKey}?secret=${secret}`,
+      responseType: "stream",
+    })
+      .then((response) => {
+        digest = response.headers.digest;
+        response.data.pipe(writeSource);
+
+        // generate digest
+        return fileHash(response.data);
+      })
+      .then(async (result) => {
+        // checksum
+        if (result === digest) {
+          try {
+            const blobServiceClient =
+              await BlobServiceClient.fromConnectionString(connectionString);
+            const blobName = `${idx}-${fileKey}`;
+            const containerClient = await blobServiceClient.getContainerClient(
+              container
+            );
+            const blockBlobClient = await containerClient.getBlockBlobClient(
+              blobName
+            );
+            await blockBlobClient.uploadStream(writeSource);
+            queue.done();
+          } catch (error) {
+            // next send error to open api
+            console.log(error, "<=== upload error");
+            queue.done();
+          }
+        } else {
+          // repeat download
+          console.log("<=== repeat download");
+          uploadFile();
+        }
+      })
+      .catch((error) => {
+        // send log error to open api
+        console.log(error, "<=== download error");
+        queue.done();
+      });
+  };
+  uploadFile();
+});
+
+// open connetion to queue and then start
+queue.open().then(() => {
+  queue.start();
 });
 
 class Controller {
   static async saveAudio(req, res) {
     try {
       const task = {
-        fileName: req.body.filename,
+        fileKey: req.body.fileKey,
         idx: req.body.idx,
       };
-      q.open().then(() => {
-        q.add(task);
+      queue.open().then(() => {
+        queue.add(task);
       });
       console.log("response", new Date());
       res.send("success add queue");
@@ -64,11 +101,11 @@ class Controller {
 //     method: "POST",
 //     url: "http://localhost:5000/save-audio",
 //     data: {
+//       fileKey:
+//         "recordings/2021-07-02/20210702_073428_100_6281210794432_57deaee3-a774-4938-8875-3ad8f4c90dc7.mp3",
 //       orgUuid: "ef1eb1d3-a884-474f-9f68-74bd6ea5a83e",
-//       txnUuid: "3069128a-ed39-4a28-a8b8-5c0c031a4673",
-//       filename:
-//         "20210521_062013_100_6281210794432_3069128a-ed39-4a28-a8b8-5c0c031a4673.mp3",
-//       webhookCode: "callRecording",
+//       txnUuid: "57deaee3-a774-4938-8875-3ad8f4c90dc7",
+//       webhookCode: "callRecordingV2",
 //       idx,
 //     },
 //   });
