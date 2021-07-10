@@ -5,6 +5,7 @@ module.exports = class Controller {
     queue
       .add({
         fileKey: req.body.fileKey,
+        retry: 1,
       })
       .then(() => {
         res.status(200).json({

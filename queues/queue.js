@@ -11,13 +11,13 @@ queue.open().then(() => {
 
 queue.on("next", (task) => {
   console.log("Queue contains " + queue.getLength() + " job/s");
-  const { fileKey } = task.job;
+  let { fileKey, retry } = task.job;
   const connectionString = process.env.CONNECTION_STRING;
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
 
-  let readStream1;
-  let readStream2;
+  let cloneStream1;
+  let cloneStream2;
   let digest;
   // download audio file
   axios({
@@ -28,23 +28,21 @@ queue.on("next", (task) => {
     .then((response) => {
       digest = response.headers.digest;
       console.log(digest, "<== from B3");
-      readStream1 = new ReadableStreamClone(response.data);
-      readStream2 = new ReadableStreamClone(response.data);
-      return createHash(readStream2);
+      cloneStream1 = new ReadableStreamClone(response.data);
+      cloneStream2 = new ReadableStreamClone(response.data);
+      return createHash(cloneStream2);
     })
     .then((result) => {
       // integrity verification
       console.log(result, "<== after hash");
       if (result === digest) {
-        return decryptFile(readStream1);
+        return decryptFile(cloneStream1);
       } else {
-        queue.add({
-          fileKey,
-        });
-        queue.done();
+        throw new Error("Checksum failed");
       }
     })
     .then((result) => {
+      console.log("upload azure");
       const blobServiceClient =
         BlobServiceClient.fromConnectionString(connectionString);
       const containerClient = blobServiceClient.getContainerClient(container);
@@ -52,16 +50,52 @@ queue.on("next", (task) => {
       return blockBlobClient.uploadStream(result);
     })
     .then(() => {
-      console.log("ini");
+      console.log("done");
       queue.done();
     })
     .catch((error) => {
       // need open api to consume error logs
-      console.log(error, "<=== download error");
-      // queue.add({
-      //   fileKey,
-      // });
-      queue.done();
+      console.log(error.message, "<=== download error");
+      if (error.message === "Checksum failed") {
+        // queue again
+        // if more than 5, send alert
+        console.log("Cheksum not succuess");
+        if (retry <= 5) {
+          console.log(retry, "<== retry");
+          setTimeout(() => {
+            queue.add({
+              fileKey,
+              retry: retry + 1,
+            });
+            queue.done();
+          }, 2000);
+        } else {
+          console.log(retry, "finish and send alert");
+          queue.done();
+        }
+      } else if (error.message === "Decrypt failed") {
+        // queue again
+        // if more than 5, send alert
+        console.log("Decrypt not success");
+        if (retry <= 5) {
+          console.log(retry, "<== retry");
+          setTimeout(() => {
+            queue.add({
+              fileKey,
+              retry: retry + 1,
+            });
+            queue.done();
+          }, 2000);
+        } else {
+          console.log(retry, "finish and send alert");
+          queue.done();
+        }
+      } else {
+        // if more than 5, send alert
+        console.log(error.message);
+        console.log("send alert");
+        queue.done();
+      }
     });
 });
 
@@ -70,10 +104,3 @@ queue.on("empty", () => {
 });
 
 module.exports = queue;
-
-// {
-//   "fileKey": "recordings/2021-07-09/20210709_025449_100_6282134063355_3ee68260-9e81-4d9b-bbc6-cd0d5c4fde31.mp3",
-//   "orgUuid": "ef1eb1d3-a884-474f-9f68-74bd6ea5a83e",
-//   "txnUuid": "3ee68260-9e81-4d9b-bbc6-cd0d5c4fde31",
-//   "webhookCode": "callRecordingV2"
-//   }
