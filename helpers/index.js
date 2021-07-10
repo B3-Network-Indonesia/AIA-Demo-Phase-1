@@ -1,3 +1,4 @@
 module.exports = {
-  fileHash: require("./fileHash"),
+  createHash: require("./createHash"),
+  decryptFile: require("./decryptFile"),
 };

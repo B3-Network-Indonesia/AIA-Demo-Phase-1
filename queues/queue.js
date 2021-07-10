@@ -1,6 +1,6 @@
-const { fileHash } = require("../helpers");
+const { createHash, decryptFile } = require("../helpers");
 const { BlobServiceClient } = require("@azure/storage-blob");
-const Stream = require("stream");
+const ReadableStreamClone = require("readable-stream-clone");
 const axios = require("axios");
 const Queue = require("node-persistent-queue");
 const queue = new Queue("./db/db.sqlite", 1);
@@ -16,46 +16,51 @@ queue.on("next", (task) => {
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
 
-  const writeSource = new Stream.PassThrough();
+  let readStream1;
+  let readStream2;
   let digest;
   // download audio file
   axios({
     method: "GET",
-    url: `https://portal.spidergate.com.sg/_o/v2/files/${fileKey}?secret=${secret}`,
+    url: `https://portal.hoiio.net/_o/v2/files/${fileKey}?secret=${secret}`,
     responseType: "stream",
   })
     .then((response) => {
       digest = response.headers.digest;
-      response.data.pipe(writeSource);
-      // generate digest
-      return fileHash(response.data);
+      console.log(digest, "<== from B3");
+      readStream1 = new ReadableStreamClone(response.data);
+      readStream2 = new ReadableStreamClone(response.data);
+      return createHash(readStream2);
     })
     .then((result) => {
       // integrity verification
+      console.log(result, "<== after hash");
       if (result === digest) {
-        // if checksum succesful, upload file to azure storage
-        const blobServiceClient =
-          BlobServiceClient.fromConnectionString(connectionString);
-        const containerClient = blobServiceClient.getContainerClient(container);
-        const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
-        return blockBlobClient.uploadStream(writeSource);
+        return decryptFile(readStream1);
       } else {
-        // if checksum failed, queuing the job again
         queue.add({
           fileKey,
         });
         queue.done();
       }
     })
+    .then((result) => {
+      const blobServiceClient =
+        BlobServiceClient.fromConnectionString(connectionString);
+      const containerClient = blobServiceClient.getContainerClient(container);
+      const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
+      return blockBlobClient.uploadStream(result);
+    })
     .then(() => {
+      console.log("ini");
       queue.done();
     })
     .catch((error) => {
       // need open api to consume error logs
       console.log(error, "<=== download error");
-      queue.add({
-        fileKey,
-      });
+      // queue.add({
+      //   fileKey,
+      // });
       queue.done();
     });
 });
@@ -65,3 +70,10 @@ queue.on("empty", () => {
 });
 
 module.exports = queue;
+
+// {
+//   "fileKey": "recordings/2021-07-09/20210709_025449_100_6282134063355_3ee68260-9e81-4d9b-bbc6-cd0d5c4fde31.mp3",
+//   "orgUuid": "ef1eb1d3-a884-474f-9f68-74bd6ea5a83e",
+//   "txnUuid": "3ee68260-9e81-4d9b-bbc6-cd0d5c4fde31",
+//   "webhookCode": "callRecordingV2"
+//   }
