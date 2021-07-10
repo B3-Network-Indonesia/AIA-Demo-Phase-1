@@ -1,3 +1,3 @@
 node_modules
 .env
-new_privatekey.asc
+privatekey.asc

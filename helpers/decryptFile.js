@@ -3,7 +3,7 @@ const openpgp = require("openpgp");
 const path = require("path");
 
 const privateKeyArmored = fs.readFileSync(
-  path.resolve(__dirname, "../new_privatekey.asc"),
+  path.resolve(__dirname, "../privatekey.asc"),
   "utf-8"
 );
 
