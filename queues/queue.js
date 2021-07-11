@@ -4,6 +4,10 @@ const ReadableStreamClone = require("readable-stream-clone");
 const axios = require("axios");
 const Queue = require("node-persistent-queue");
 const queue = new Queue("./db/db.sqlite", 1);
+const fs = require("fs");
+const path = require("path");
+
+let errId = 1;
 
 queue.open().then(() => {
   queue.start();
@@ -11,7 +15,7 @@ queue.open().then(() => {
 
 queue.on("next", (task) => {
   console.log("Queue contains " + queue.getLength() + " job/s");
-  let { fileKey, retry } = task.job;
+  let { fileKey, orgUuid, txnUuid, retry } = task.job;
   const connectionString = process.env.CONNECTION_STRING;
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
@@ -54,47 +58,58 @@ queue.on("next", (task) => {
       queue.done();
     })
     .catch((error) => {
-      // need open api to consume error logs
-      console.log(error.message, "<=== download error");
-      if (error.message === "Checksum failed") {
-        // queue again
-        // if more than 5, send alert
-        console.log("Cheksum not succuess");
-        if (retry <= 5) {
-          console.log(retry, "<== retry");
-          setTimeout(() => {
-            queue.add({
-              fileKey,
-              retry: retry + 1,
-            });
-            queue.done();
-          }, 2000);
-        } else {
-          console.log(retry, "finish and send alert");
+      console.log("===>", error.message, "<=== error message");
+      if (retry <= 3) {
+        console.log(retry, "<== retry");
+        setTimeout(() => {
+          queue.add({
+            fileKey,
+            fileKey,
+            orgUuid,
+            txnUuid,
+            retry: retry + 1,
+          });
           queue.done();
-        }
-      } else if (error.message === "Decrypt failed") {
-        // queue again
-        // if more than 5, send alert
-        console.log("Decrypt not success");
-        if (retry <= 5) {
-          console.log(retry, "<== retry");
-          setTimeout(() => {
-            queue.add({
-              fileKey,
-              retry: retry + 1,
-            });
-            queue.done();
-          }, 2000);
-        } else {
-          console.log(retry, "finish and send alert");
-          queue.done();
-        }
+        }, 10000);
       } else {
-        // if more than 5, send alert
-        console.log(error.message);
-        console.log("send alert");
-        queue.done();
+        console.log(retry, "finish and send alert");
+        axios({
+          method: "POST",
+          url: "https://oqxnp4g8db.execute-api.ap-southeast-1.amazonaws.com/dev/api/log",
+          data: {
+            fileKey,
+            orgUuid,
+            txnUuid,
+            errorMessage: error.message,
+            id: errId,
+          },
+        })
+          .then(({ data }) => {
+            errId++;
+            queue.done();
+          })
+          .catch((err) => {
+            const payload = {
+              date: new Date(),
+              fileKey,
+              orgUuid,
+              txnUuid,
+              errorMessage: error.message,
+            };
+            let currentData = fs.readFileSync(
+              path.resolve(__dirname, "../logs.json"),
+              "utf-8"
+            );
+
+            currentData = JSON.parse(currentData);
+            currentData.unshift(payload);
+
+            fs.writeFileSync(
+              path.resolve(__dirname, "../logs.json"),
+              JSON.stringify(currentData, null, 2)
+            );
+            queue.done();
+          });
       }
     });
 });

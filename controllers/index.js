@@ -5,6 +5,8 @@ module.exports = class Controller {
     queue
       .add({
         fileKey: req.body.fileKey,
+        orgUuid: req.body.orgUuid,
+        txnUuid: req.body.txnUuid,
         retry: 1,
       })
       .then(() => {
