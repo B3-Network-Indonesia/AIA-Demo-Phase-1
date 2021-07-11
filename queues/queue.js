@@ -14,7 +14,6 @@ queue.open().then(() => {
 });
 
 queue.on("next", (task) => {
-  console.log("Queue contains " + queue.getLength() + " job/s");
   let { fileKey, orgUuid, txnUuid, retry } = task.job;
   const connectionString = process.env.CONNECTION_STRING;
   const container = process.env.CONTAINER_NAME;
@@ -31,14 +30,14 @@ queue.on("next", (task) => {
   })
     .then((response) => {
       digest = response.headers.digest;
-      console.log(digest, "<== from B3");
+
       cloneStream1 = new ReadableStreamClone(response.data);
       cloneStream2 = new ReadableStreamClone(response.data);
       return createHash(cloneStream2);
     })
     .then((result) => {
       // integrity verification
-      console.log(result, "<== after hash");
+
       if (result === digest) {
         return decryptFile(cloneStream1);
       } else {
@@ -46,7 +45,6 @@ queue.on("next", (task) => {
       }
     })
     .then((result) => {
-      console.log("upload azure");
       const blobServiceClient =
         BlobServiceClient.fromConnectionString(connectionString);
       const containerClient = blobServiceClient.getContainerClient(container);
@@ -54,13 +52,10 @@ queue.on("next", (task) => {
       return blockBlobClient.uploadStream(result);
     })
     .then(() => {
-      console.log("done");
       queue.done();
     })
     .catch((error) => {
-      console.log("===>", error.message, "<=== error message");
       if (retry <= 3) {
-        console.log(retry, "<== retry");
         setTimeout(() => {
           queue.add({
             fileKey,
@@ -72,7 +67,6 @@ queue.on("next", (task) => {
           queue.done();
         }, 10000);
       } else {
-        console.log(retry, "finish and send alert");
         axios({
           method: "POST",
           url: "https://oqxnp4g8db.execute-api.ap-southeast-1.amazonaws.com/dev/api/log",

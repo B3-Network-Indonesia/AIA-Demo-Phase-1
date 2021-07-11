@@ -5,7 +5,6 @@ module.exports = (file) => {
     file
       .pipe(crypto.createHash("sha256").setEncoding("base64"))
       .on("error", (err) => {
-        console.log(err);
         reject(err);
       })
       .on("finish", function () {
