@@ -4,8 +4,6 @@ const ReadableStreamClone = require("readable-stream-clone");
 const axios = require("axios");
 const Queue = require("node-persistent-queue");
 const queue = new Queue("./db/db.sqlite", 1);
-const fs = require("fs");
-const path = require("path");
 
 let errId = 1;
 
@@ -67,7 +65,7 @@ queue.on("next", (task) => {
             retry: retry + 1,
           });
           queue.done();
-        }, 10000);
+        }, 1000);
       } else {
         axios({
           method: "POST",
@@ -85,7 +83,15 @@ queue.on("next", (task) => {
             queue.done();
           })
           .catch((err) => {
-            console.log(err);
+            const errorMessage = error.message;
+            let data = {
+              fileKey,
+              orgUuid,
+              txnUuid,
+              id: errId,
+            };
+            let message = JSON.stringify(data);
+            logger.error(`- :: - ${errorMessage} - ${message}`);
             errId++;
             queue.done();
           });
