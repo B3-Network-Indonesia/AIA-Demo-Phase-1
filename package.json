@@ -18,6 +18,7 @@
     "express": "^4.17.1",
     "node-persistent-queue": "^1.0.3",
     "openpgp": "^4.10.8",
-    "readable-stream-clone": "0.0.7"
+    "readable-stream-clone": "0.0.7",
+    "winston": "^3.3.3"
   }
 }

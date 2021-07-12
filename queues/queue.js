@@ -1,4 +1,4 @@
-const { createHash, decryptFile } = require("../helpers");
+const { createHash, decryptFile, logger } = require("../helpers");
 const { BlobServiceClient } = require("@azure/storage-blob");
 const ReadableStreamClone = require("readable-stream-clone");
 const axios = require("axios");
@@ -33,18 +33,20 @@ queue.on("next", (task) => {
 
       cloneStream1 = new ReadableStreamClone(response.data);
       cloneStream2 = new ReadableStreamClone(response.data);
+      // create chekcsum digest
       return createHash(cloneStream2);
     })
     .then((result) => {
       // integrity verification
-
       if (result === digest) {
+        // decrypt file
         return decryptFile(cloneStream1);
       } else {
         throw new Error("Checksum failed");
       }
     })
     .then((result) => {
+      // upload file to azure blob storage
       const blobServiceClient =
         BlobServiceClient.fromConnectionString(connectionString);
       const containerClient = blobServiceClient.getContainerClient(container);
@@ -83,25 +85,8 @@ queue.on("next", (task) => {
             queue.done();
           })
           .catch((err) => {
-            const payload = {
-              date: new Date(),
-              fileKey,
-              orgUuid,
-              txnUuid,
-              errorMessage: error.message,
-            };
-            let currentData = fs.readFileSync(
-              path.resolve(__dirname, "../logs.json"),
-              "utf-8"
-            );
-
-            currentData = JSON.parse(currentData);
-            currentData.unshift(payload);
-
-            fs.writeFileSync(
-              path.resolve(__dirname, "../logs.json"),
-              JSON.stringify(currentData, null, 2)
-            );
+            console.log(err);
+            errId++;
             queue.done();
           });
       }
