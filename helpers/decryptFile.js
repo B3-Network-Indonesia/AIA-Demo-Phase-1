@@ -35,7 +35,7 @@ module.exports = (file) => {
       })
       .catch((err) => {
         reject({
-          message: "Decrypt failed",
+          message: "Decrypt file failed",
         });
       });
   });
