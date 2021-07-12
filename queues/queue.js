@@ -11,7 +11,7 @@ queue.open().then(() => {
 });
 
 queue.on("next", (task) => {
-  let { fileKey, orgUuid, txnUuid, retry } = task.job;
+  let { fileKey, orgUuid, txnUuid, localLinkPath, retry } = task.job;
   const connectionString = process.env.CONNECTION_STRING;
   const container = process.env.CONTAINER_NAME;
   const secret = process.env.SECRET;
@@ -47,20 +47,21 @@ queue.on("next", (task) => {
       const blobServiceClient =
         BlobServiceClient.fromConnectionString(connectionString);
       const containerClient = blobServiceClient.getContainerClient(container);
-      const blockBlobClient = containerClient.getBlockBlobClient(fileKey);
+      const blockBlobClient = containerClient.getBlockBlobClient(localLinkPath);
       return blockBlobClient.uploadStream(result);
     })
     .then(() => {
       queue.done();
     })
     .catch((error) => {
+      console.log(error.message);
       if (retry <= 3) {
         setTimeout(() => {
           queue.add({
             fileKey,
-            fileKey,
             orgUuid,
             txnUuid,
+            localLinkPath,
             retry: retry + 1,
           });
           queue.done();
@@ -73,6 +74,7 @@ queue.on("next", (task) => {
             fileKey,
             orgUuid,
             txnUuid,
+            localLinkPath,
             errorMessage: error.message,
             id: errId,
           },
@@ -87,6 +89,7 @@ queue.on("next", (task) => {
               fileKey,
               orgUuid,
               txnUuid,
+              localLinkPath,
               id: errId,
             };
             let payload = JSON.stringify(data);

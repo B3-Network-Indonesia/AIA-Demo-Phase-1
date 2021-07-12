@@ -7,6 +7,7 @@ module.exports = class Controller {
         fileKey: req.body.fileKey,
         orgUuid: req.body.orgUuid,
         txnUuid: req.body.txnUuid,
+        localLinkPath: req.body.localLinkPath,
         retry: 1,
       })
       .then(() => {
