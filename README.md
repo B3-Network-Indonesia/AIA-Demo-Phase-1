@@ -25,7 +25,8 @@ PASSPHRASE=<passphrase to decrypt privatekey>
 
 ## Setup privatekey.asc file
 
-You need to create file name `privatekey.asc` in the root folder, and copy your privatekey to this file
+You need to create file name `privatekey.asc` in the root folder, and copy your privatekey to this file.
+To create a key pair, see the following repository <a href="https://github.com/B3-Network-Indonesia/Generate-PGP-Key-Pair">Generate Key Pairs</a>
 
 <hr />
 
